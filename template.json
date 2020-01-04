@@ -1,0 +1,538 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "Creates a Content distribution network and s3 bucket website as the origin.",
+	"Parameters": {
+		"AcmCertificateArn": {
+			"Type": "String",
+			"Description": "The Amazon Resource Name for an AWS Certificate Manager (ACM) SSL cert."
+		},
+		"DNSName": {
+			"Type": "String",
+			"Description": "The registered DNS domain name for this application, e.g. example.com"
+		},
+		"Name": {
+			"Type": "String",
+			"Description": "A DNS record set"
+		},
+		"IdentityPoolId": {
+			"Type": "String",
+			"Description": "The Id for a Cognito Identity pool."
+		},
+		"OriginAccessIdentity": {
+			"Type": "String",
+			"Description": "A special CloudFront user that you can use to give CloudFront access to your Amazon S3 bucket."
+		}
+	},
+	"Mappings": {
+		"RegionMap": {
+			"us-east-1": {
+				"ZoneId": "Z3AQBSTGFYJSTF",
+				"Region": "US Standard",
+				"EndPoint": "s3-website-us-east-1.amazonaws.com"
+			},
+			"us-west-1": {
+				"ZoneId": "Z2F56UZL2M1ACD",
+				"Region": "US West (N. California)",
+				"EndPoint": "s3-website-us-west-1.amazonaws.com"
+			},
+			"us-west-2": {
+				"ZoneId": "Z3BJ6K6RIION7M",
+				"Region": "US West (Oregon)",
+				"EndPoint": "s3-website-us-west-2.amazonaws.com"
+			},
+			"eu-west-1": {
+				"ZoneId": "Z1BKCTXD74EZPE",
+				"Region": "EU (Ireland)",
+				"EndPoint": "s3-website-eu-west-1.amazonaws.com"
+			},
+			"eu-central-1": {
+				"ZoneId": "Z21DNDUVLTQW6Q",
+				"Region": "EU (Frankfurt)",
+				"EndPoint": "s3-website-eu-central-1.amazonaws.com"
+			},
+			"ap-southeast-1": {
+				"ZoneId": "Z1WCIGYICN2BYD",
+				"Region": "Asia Pacific (Sydney)",
+				"EndPoint": "s3-website-ap-southeast-2.amazonaws.com"
+			},
+			"ap-northeast-1": {
+				"ZoneId": "Z2M4EHUR26P7ZW",
+				"Region": "Asia Pacific (Tokyo)",
+				"EndPoint": "s3-website-ap-northeast-1.amazonaws.com"
+			},
+			"sa-east-1": {
+				"ZoneId": "Z7KQH4QJS55SO",
+				"Region": "South America (Sao Paulo)",
+				"EndPoint": "s3-website-sa-east-1.amazonaws.com"
+			}
+		}
+	},
+	"Resources": {
+		"CognitoAuthIAMRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Sid": "",
+						"Effect": "Allow",
+						"Principal": {
+							"Federated": "cognito-identity.amazonaws.com"
+						},
+						"Action": "sts:AssumeRoleWithWebIdentity",
+						"Condition": {
+							"StringEquals": {
+								"cognito-identity.amazonaws.com:aud": {
+									"Ref": "IdentityPoolId"
+								}
+							},
+							"ForAnyValue:StringLike": {
+								"cognito-identity.amazonaws.com:amr": "authenticated"
+							}
+						}
+					}]
+				},
+				"Path": "/"
+			}
+		},
+		"CognitoUnAuthIAMRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Sid": "",
+						"Effect": "Allow",
+						"Principal": {
+							"Federated": "cognito-identity.amazonaws.com"
+						},
+						"Action": "sts:AssumeRoleWithWebIdentity",
+						"Condition": {
+							"StringEquals": {
+								"cognito-identity.amazonaws.com:aud": {
+									"Ref": "IdentityPoolId"
+								}
+							},
+							"ForAnyValue:StringLike": {
+								"cognito-identity.amazonaws.com:amr": "unauthenticated"
+							}
+						}
+					}]
+				},
+				"Path": "/"
+			}
+		},
+		"CognitoRolePolicies": {
+			"Type": "AWS::IAM::Policy",
+			"DependsOn": "CognitoAuthIAMRole",
+			"Properties": {
+				"PolicyName": "InstancePolicy",
+				"PolicyDocument": {
+					"Statement": [{
+						"Effect": "Allow",
+						"Action": [
+							"mobileanalytics:PutEvents",
+							"cognito-sync:*"
+						],
+						"Resource": [
+							"*"
+						]
+					}, {
+						"Effect": "Allow",
+						"Action": [
+							"lambda:InvokeFunction"
+						],
+						"Resource": [{
+							"Fn::Join": [
+								"", [
+									"arn:aws:lambda:", {
+										"Ref": "AWS::Region"
+									},
+									":", {
+										"Ref": "AWS::AccountId"
+									},
+									":function:AuthCreateUser"
+								]
+							]
+						}, {
+							"Fn::Join": [
+								"", [
+									"arn:aws:lambda:", {
+										"Ref": "AWS::Region"
+									},
+									":", {
+										"Ref": "AWS::AccountId"
+									},
+									":function:AuthVerifyUser"
+								]
+							]
+						}, {
+							"Fn::Join": [
+								"", [
+									"arn:aws:lambda:", {
+										"Ref": "AWS::Region"
+									},
+									":", {
+										"Ref": "AWS::AccountId"
+									},
+									":function:AuthResetPassword"
+								]
+							]
+						}, {
+							"Fn::Join": [
+								"", [
+									"arn:aws:lambda:", {
+										"Ref": "AWS::Region"
+									},
+									":", {
+										"Ref": "AWS::AccountId"
+									},
+									":function:AuthLogin"
+								]
+							]
+						}]
+					}]
+				},
+				"Roles": [{
+					"Ref": "CognitoAuthIAMRole"
+				}, {
+					"Ref": "CognitoUnAuthIAMRole"
+				}]
+			}
+		},
+		"LambdaIAMRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Sid": "",
+						"Effect": "Allow",
+						"Principal": {
+							"Service": "lambda.amazonaws.com"
+						},
+						"Action": "sts:AssumeRole"
+					}]
+				},
+				"Path": "/"
+			}
+		},
+		"LambdaRolePolicies": {
+			"Type": "AWS::IAM::Policy",
+			"DependsOn": "LambdaIAMRole",
+			"Properties": {
+				"PolicyName": "InstancePolicy",
+				"PolicyDocument": {
+					"Statement": [{
+						"Action": [
+							"dynamodb:PutItem",
+							"dynamodb:GetItem",
+							"dynamodb:UpdateItem"
+						],
+						"Effect": "Allow",
+						"Resource": {
+							"Fn::Join": [
+								"", [
+									"arn:aws:dynamodb:", {
+										"Ref": "AWS::Region"
+									},
+									":", {
+										"Ref": "AWS::AccountId"
+									},
+									":table/AuthUsers"
+								]
+							]
+						}
+					}, {
+						"Effect": "Allow",
+						"Action": [
+							"cognito-identity:GetOpenIdTokenForDeveloperIdentity"
+						],
+						"Resource": {
+							"Fn::Join": [
+								"", [
+									"arn:aws:cognito-identity:", {
+										"Ref": "AWS::Region"
+									},
+									":", {
+										"Ref": "AWS::AccountId"
+									},
+									":identitypool/", {
+										"Ref": "IdentityPoolId"
+									}
+								]
+							]
+						}
+					}, {
+						"Effect": "Allow",
+						"Action": [
+							"ses:SendEmail",
+							"ses:SendRawEmail"
+						],
+						"Resource": "*"
+					}, {
+						"Sid": "",
+						"Resource": "*",
+						"Action": [
+							"logs:*"
+						],
+						"Effect": "Allow"
+					}]
+				},
+				"Roles": [{
+					"Ref": "LambdaIAMRole"
+				}]
+			}
+		},
+		"LambdaAuthCreateUser": {
+			"Type": "AWS::Lambda::Function",
+			"Properties": {
+        "FunctionName" : "AuthCreateUser",
+				"Handler": "index.handler",
+				"Role": {
+					"Fn::GetAtt": ["LambdaIAMRole", "Arn"]
+				},
+				"Code": {
+					"S3Bucket": "lambda-awsbot-com",
+					"S3Key": "AuthCreateUser.zip"
+				},
+				"Runtime": "nodejs4.3",
+				"Timeout": "25"
+			}
+		},
+		"LambdaAuthLogin": {
+			"Type": "AWS::Lambda::Function",
+			"Properties": {
+        "FunctionName" : "AuthLogin",
+				"Handler": "index.handler",
+				"Role": {
+					"Fn::GetAtt": ["LambdaIAMRole", "Arn"]
+				},
+				"Code": {
+					"S3Bucket": "lambda-awsbot-com",
+					"S3Key": "AuthLogin.zip"
+				},
+				"Runtime": "nodejs4.3",
+				"Timeout": "25"
+			}
+		},
+		"LambdaResetPassword": {
+			"Type": "AWS::Lambda::Function",
+			"Properties": {
+        "FunctionName" : "AuthResetPassword",
+				"Handler": "index.handler",
+				"Role": {
+					"Fn::GetAtt": ["LambdaIAMRole", "Arn"]
+				},
+				"Code": {
+					"S3Bucket": "lambda-awsbot-com",
+					"S3Key": "AuthResetPassword.zip"
+				},
+				"Runtime": "nodejs4.3",
+				"Timeout": "25"
+			}
+		},
+		"LambdaVerifyUser": {
+			"Type": "AWS::Lambda::Function",
+			"Properties": {
+        "FunctionName" : "AuthVerifyUser",
+				"Handler": "index.handler",
+				"Role": {
+					"Fn::GetAtt": ["LambdaIAMRole", "Arn"]
+				},
+				"Code": {
+					"S3Bucket": "lambda-awsbot-com",
+					"S3Key": "AuthVerifyUser.zip"
+				},
+				"Runtime": "nodejs4.3",
+				"Timeout": "25"
+			}
+		},
+		"BucketPolicy": {
+			"Type": "AWS::S3::BucketPolicy",
+			"Properties": {
+				"PolicyDocument": {
+					"Id": "S3BucketPolicy",
+					"Statement": [{
+						"Sid": "ReadAccess",
+						"Action": [
+							"s3:GetObject"
+						],
+						"Effect": "Allow",
+						"Resource": {
+							"Fn::Join": [
+								"", [
+									"arn:aws:s3:::", {
+										"Ref": "Bucket"
+									},
+									"/*"
+								]
+							]
+						},
+						"Principal": {
+							"AWS": "*"
+						}
+					}]
+				},
+				"Bucket": {
+					"Ref": "Bucket"
+				}
+			}
+		},
+		"Bucket": {
+			"Type": "AWS::S3::Bucket",
+			"Properties": {
+				"AccessControl": "PublicRead",
+				"CorsConfiguration": {
+					"CorsRules": [{
+						"AllowedHeaders": ["*"],
+						"AllowedMethods": ["GET", "POST", "PUT", "DELETE"],
+						"AllowedOrigins": ["*"]
+					}]
+				},
+				"WebsiteConfiguration": {
+					"IndexDocument": "login.html",
+					"ErrorDocument": "error.html"
+				},
+				"Tags": [{
+					"Key": "Name",
+					"Value": {
+						"Fn::Join": [
+							"", [{
+									"Ref": "Name"
+								},
+								".", {
+									"Ref": "DNSName"
+								}
+							]
+						]
+					}
+				}]
+			}
+		},
+		"CloudFrontDistribution": {
+			"Type": "AWS::CloudFront::Distribution",
+			"Properties": {
+				"DistributionConfig": {
+					"Aliases": [{
+						"Fn::Join": [
+							"", [{
+									"Ref": "Name"
+								},
+								".", {
+									"Ref": "DNSName"
+								}
+							]
+						]
+					}],
+					"DefaultCacheBehavior": {
+						"ForwardedValues": {
+							"QueryString": "false",
+							"Cookies": {
+								"Forward": "none"
+							}
+						},
+						"TargetOriginId": "S3Origin",
+						"ViewerProtocolPolicy": "redirect-to-https"
+					},
+					"DefaultRootObject": "login.html",
+					"Enabled": "true",
+					"Origins": [{
+						"DomainName": {
+							"Fn::GetAtt": [
+								"Bucket",
+								"DomainName"
+							]
+						},
+						"Id": "S3Origin",
+						"S3OriginConfig": {
+							"OriginAccessIdentity": {
+								"Fn::Join": [
+									"", [
+										"origin-access-identity/cloudfront/", {
+											"Ref": "OriginAccessIdentity"
+										}
+									]
+								]
+							}
+						}
+					}],
+					"PriceClass": "PriceClass_200",
+					"ViewerCertificate": {
+						"AcmCertificateArn": {
+							"Ref": "AcmCertificateArn"
+						},
+						"SslSupportMethod": "sni-only"
+					}
+				}
+			}
+		},
+		"DynamoDBTable": {
+			"Type": "AWS::DynamoDB::Table",
+			"Properties": {
+				"AttributeDefinitions": [{
+					"AttributeName": "email",
+					"AttributeType": "S"
+				}],
+				"KeySchema": [{
+					"AttributeName": "email",
+					"KeyType": "HASH"
+				}],
+				"ProvisionedThroughput": {
+					"ReadCapacityUnits": "5",
+					"WriteCapacityUnits": "5"
+				},
+				"TableName": "AuthUsers"
+			}
+		},
+		"RecordSetGroup": {
+			"Type": "AWS::Route53::RecordSetGroup",
+			"Properties": {
+				"HostedZoneName": {
+					"Fn::Join": [
+						"", [{
+								"Ref": "DNSName"
+							},
+							"."
+						]
+					]
+				},
+				"Comment": "Zone apex alias.",
+				"RecordSets": [{
+					"Name": {
+						"Fn::Join": [
+							"", [{
+									"Ref": "Name"
+								},
+								".", {
+									"Ref": "DNSName"
+								}
+							]
+						]
+					},
+					"Type": "A",
+					"AliasTarget": {
+						"HostedZoneId": "Z2FDTNDATAQYW2",
+						"DNSName": {
+							"Fn::GetAtt": [
+								"CloudFrontDistribution",
+								"DomainName"
+							]
+						}
+					}
+				}]
+			}
+		}
+	},
+	"Outputs": {
+		"WebsiteURL": {
+			"Value": {
+				"Fn::GetAtt": [
+					"Bucket",
+					"WebsiteURL"
+				]
+			},
+			"Description": "URL for website hosted on S3"
+		}
+	}
+}

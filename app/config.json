@@ -1,0 +1,14 @@
+{
+  "AWS_ACCOUNT_ID": "",
+  "REGION": "",
+  "BUCKET": "",
+  "MAX_AGE": "10",
+  "DDB_TABLE": "AuthUsers",
+  "IDENTITY_POOL_NAME": "AuthLogin",
+  "DEVELOPER_PROVIDER_NAME": "",
+  "EXTERNAL_NAME": "",
+  "EMAIL_SOURCE": "",
+  "VERIFICATION_PAGE": "https:///verify.html",
+  "RESET_PAGE": "https:///reset.html",
+  "IDENTITY_POOL_ID": ""
+}
